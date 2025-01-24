@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 class CategorizationProcessor:
     '''
@@ -98,6 +99,33 @@ class AbstractCategory():
             'order': self.order
         }
 
+    def add_odds_ratio(self, df):
+        assert set(df.columns.tolist()) == set([False, True])
+
+        df['total'] = df.sum(axis=1)
+
+        # Calculate expected fail rate
+        expected_fail_rate = df[False].sum() / df.sum().sum()
+
+        # Actual fail rate for each prefix
+        df['actual_fail_rate'] = df[False] / df['total']
+
+        # Convert rates to odds
+        df['observed_odds'] = df['actual_fail_rate'] / (1 - df['actual_fail_rate'])
+        expected_odds = expected_fail_rate / (1 - expected_fail_rate)
+
+        # Compute actual odds ratio
+        def safe_odds_ratio(obs_odds, exp_odds):
+            if np.isinf(obs_odds):
+                return np.inf
+            return obs_odds / exp_odds
+
+        df['add_odds_ratio'] = df['observed_odds'].apply(lambda x: safe_odds_ratio(x, expected_odds))
+
+        df = df.sort_values('add_odds_ratio', ascending=False)
+        return df
+
+
 
 '''
 ################
@@ -106,8 +134,8 @@ LOCAL CATEGORIES
 '''
 
 class L1(AbstractCategory):
-    code = 'L1'
-    description = 'Found DOI in public repo but not affiliated with the institution'
+    code = 'L-inst'
+    description = 'DOI in global repo not affiliated with the institution'
     color = '#f58c87'
     order = 1
 
@@ -138,8 +166,8 @@ class L1(AbstractCategory):
         return pub_foundable_but_not_affiliated
 
 class L2(AbstractCategory):
-    code = 'L2'
-    description = 'Found DOI in public repo but not within time range'
+    code = 'L-time'
+    description = 'DOI in global repo not within time range'
     color = '#f58c87'
     order = 2
 
@@ -161,13 +189,13 @@ class L2(AbstractCategory):
         return pub_found_outside_time_range
 
 class L3(AbstractCategory):
-    code = 'L3'
-    description = 'DOI not found in global, might be explained by the DOI\'s prefix'
+    code = 'L-prefix'
+    description = 'DOI not found in global repo, related to DOI\'s prefix'
     color = '#f58c87'
     order = 3
 
-    PARAM_MIN_RECORDS = 10
-    PARAM_ODDS_RATIO_TRESHOLD = 5
+    PARAM_MIN_RECORDS = 100
+    PARAM_ODDS_RATIO_TRESHOLD = 10
 
     def __init__(self, local_only, overlap, global_only, global_repo_from_missing_doi):
         super().__init__(local_only, overlap, global_only, global_repo_from_missing_doi)
@@ -181,14 +209,14 @@ class L3(AbstractCategory):
         prefix_overlap = [doi.split('/')[0] for doi in overlap_dois]
         prefix_analysis = pd.DataFrame([{'prefix': x, 'is_overlap': True} for x in prefix_overlap] + [{'prefix': x, 'is_overlap': False} for x in prefix_local_only])
         prefix_analysis = prefix_analysis.pivot_table(index='prefix', columns='is_overlap', aggfunc='size', fill_value=0)
-        prefix_analysis = prefix_analysis[prefix_analysis.sum(axis=1) >= self.PARAM_MIN_RECORDS]
 
-        success_rate = prefix_analysis[True] / prefix_analysis.sum(axis=1)
 
-        expected_treshold = len(self.local_only.publications) / len(self.overlap.publications)
+        prefix_analysis = self.add_odds_ratio(prefix_analysis)
 
-        # We want to keep records where the success rate is significantly lower than the expected success rate
-        self.problematic_prefixes = success_rate[success_rate < expected_treshold / self.PARAM_ODDS_RATIO_TRESHOLD].index
+        prefix_analysis = prefix_analysis[prefix_analysis['total'] >= self.PARAM_MIN_RECORDS]
+        prefix_analysis = prefix_analysis[prefix_analysis['add_odds_ratio'] >= self.PARAM_ODDS_RATIO_TRESHOLD]
+
+        self.problematic_prefixes = prefix_analysis.index.tolist()
 
 
     def apply(self, publication):
@@ -208,8 +236,8 @@ class L3(AbstractCategory):
 
 
 class LocalDefault(AbstractCategory):
-    code = 'L?'
-    description = 'Unexplained local only publication'
+    code = 'L-other'
+    description = 'Other DOI only present in local repo'
     color = '#ee4037'
     order = 10000
 
@@ -224,7 +252,7 @@ OVERLAP CATEGORIES
 '''
 
 class Overlap(AbstractCategory):
-    code = 'Ov'
+    code = 'Matched'
     description = 'At least one DOI found in both repositories'
     color = '#272261'
     order = 0
@@ -239,54 +267,57 @@ GLOBAL CATEGORIES
 '''
 
 class G1(AbstractCategory):
-    code = 'G1'
-    description = 'DOI not found in local, might be explained by the DOI\'s prefix'
+    code = 'G-prefix'
+    description = 'DOI not found in local repo, related to DOI\'s prefix'
+
     color = '#fccf8d'
     order = 1
 
-    PARAM_MIN_RECORDS = 10
-    PARAM_ODDS_RATIO_TRESHOLD = 5
+    PARAM_MIN_RECORDS = 100
+    PARAM_ODDS_RATIO_TRESHOLD = 10
 
     def __init__(self, local_only, overlap, global_only, global_repo_from_missing_doi):
         super().__init__(local_only, overlap, global_only, global_repo_from_missing_doi)
 
     def precompute(self):
 
-        global_only_dois = set(doi for publications in self.global_only.publications for doi in publications.DOIs)
-        overlap_dois = set(doi for publications in self.overlap.publications for doi in publications.DOIs)
+        prefix_in_local = pd.DataFrame(list(doi.split('/')[0] for publications in self.local_only.publications for doi in publications.DOIs))
+        prefix_in_local['is_local_prefix'] = True
+        prefix_in_global = pd.DataFrame(list(doi.split('/')[0] for publications in self.global_only.publications for doi in publications.DOIs))
+        prefix_in_global['is_local_prefix'] = False
+        prefix = pd.concat([prefix_in_local, prefix_in_global]).rename(columns={0: 'prefix'})
 
-        prefix_global_only = [doi.split('/')[0] for doi in global_only_dois]
-        prefix_overlap = [doi.split('/')[0] for doi in overlap_dois]
-        prefix_analysis = pd.DataFrame([{'prefix': x, 'is_overlap': True} for x in prefix_overlap] + [{'prefix': x, 'is_overlap': False} for x in prefix_global_only])
-        prefix_analysis = prefix_analysis.pivot_table(index='prefix', columns='is_overlap', aggfunc='size', fill_value=0)
-        prefix_analysis = prefix_analysis[prefix_analysis.sum(axis=1) >= self.PARAM_MIN_RECORDS]
+        prefix = prefix.pivot_table(index='prefix', columns='is_local_prefix', aggfunc='size', fill_value=0)
 
-        success_rate = prefix_analysis[True] / prefix_analysis.sum(axis=1)
-
-        expected_treshold = len(self.global_only.publications) / len(self.overlap.publications)
+        prefix = self.add_odds_ratio(prefix)
+        prefix = prefix[prefix['total'] >= self.PARAM_MIN_RECORDS]
+        prefix = prefix[prefix['add_odds_ratio'] >= self.PARAM_ODDS_RATIO_TRESHOLD]
 
         # We want to keep records where the success rate is significantly lower than the expected success rate
-        self.problematic_prefixes = success_rate[success_rate < expected_treshold / self.PARAM_ODDS_RATIO_TRESHOLD].index
+        self.problematic_prefixes = set(prefix.index.tolist())
+
+
 
     def apply(self, publication):
-        for doi in publication.DOIs:
-            prefix = doi.split('/')[0]
-            if prefix in self.problematic_prefixes:
 
-                # Record details
-                publication.category_details['problematic_prefix'] = prefix
-                return True
+        prefix_in_publication = set(doi.split('/')[0] for doi in publication.DOIs)
+        are_all_prefixes_problematic = prefix_in_publication.issubset(self.problematic_prefixes)
+
+        if are_all_prefixes_problematic:
+            publication.category_details['problematic_prefix'] = prefix_in_publication
+            return True
 
         return False
 
 class G2(AbstractCategory):
-    code = 'G2'
-    description = 'DOI not found in local, might be explained by the type of publication'
+    code = 'G-type'
+    description = 'DOI not found in local repo, related to the type of publication'
+
     color = '#fccf8d'
     order = 2
 
-    PARAM_MIN_RECORDS = 10
-    PARAM_ODDS_RATIO_TRESHOLD = 5
+    PARAM_MIN_RECORDS = 100
+    PARAM_ODDS_RATIO_TRESHOLD = 10
 
     def __init__(self, local_only, overlap, global_only, global_repo_from_missing_doi):
         super().__init__(local_only, overlap, global_only, global_repo_from_missing_doi)
@@ -300,17 +331,17 @@ class G2(AbstractCategory):
         type_analysis = pd.DataFrame([{'type': x, 'is_overlap': True} for x in type_with_success] + [{'type': x, 'is_overlap': False} for x in type_without_success])
 
         type_analysis = type_analysis.pivot_table(index='type', columns='is_overlap', aggfunc='size', fill_value=0)
-        type_analysis = type_analysis[type_analysis.sum(axis=1) >= self.PARAM_MIN_RECORDS]
 
-        success_rate = type_analysis[True] / type_analysis.sum(axis=1)
-        expected_treshold = len(self.global_only.publications) / len(self.overlap.publications)
+        type_analysis = self.add_odds_ratio(type_analysis)
 
+        type_analysis = type_analysis[type_analysis['total'] >= self.PARAM_MIN_RECORDS]
+        type_analysis = type_analysis[type_analysis['add_odds_ratio'] >= self.PARAM_ODDS_RATIO_TRESHOLD]
 
         # We want to keep records where the success rate is significantly lower than the expected success rate
-        self.problematic_prefixes = success_rate[success_rate < expected_treshold / self.PARAM_ODDS_RATIO_TRESHOLD].index
+        self.problematic_types = type_analysis.index.tolist()
 
     def apply(self, publication):
-        if publication.type in self.problematic_prefixes:
+        if publication.type in self.problematic_types:
 
             # Record details
             publication.category_details['problematic_type'] = publication.type
@@ -319,8 +350,9 @@ class G2(AbstractCategory):
         return False
 
 class G3(AbstractCategory):
-    code = 'G3'
-    description = 'DOI not found in local, but written by authors known to the institution'
+    code = 'G-authors'
+    description = 'DOI not found in local repo, written by authors known to the institution'
+
     color = '#fccf8d'
     order = 3
 
@@ -359,8 +391,8 @@ class G3(AbstractCategory):
         return len(authors_known_to_inst) > 0
 
 class GlobalDefault(AbstractCategory):
-    code = 'G?'
-    description = 'Unexplained global only publication'
+    code = 'G-other'
+    description = 'Other DOI only present in global repo'
     color = '#faaf41'
     order = 10000
 

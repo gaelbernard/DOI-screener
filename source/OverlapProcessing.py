@@ -153,6 +153,11 @@ class OverlapProcessing():
         data = pd.DataFrame(self.individual_categorization)
         data = data.groupby(['super-category', 'code', 'description','order','color','super-order']).size().reset_index().rename(columns={0: 'count'})
         data = data.sort_values(by=['super-order', 'order'])
+
+        # We want to have a mirror effect, so reverse the order when the super-order is 1
+        data['order'] = data.loc[data['super-order'] == 1, 'order'] * -1
+
+        data = data.sort_values(by=['super-order', 'order'])
         data['pct'] = data['count'] / data['count'].sum() * 100
         data['pct'] = data['pct'].round(1)
         data['pct'] = data['pct'].astype(str) + '%'
@@ -164,7 +169,6 @@ class OverlapProcessing():
         colors = data['color']  # colors
 
         margin = .03 * data['count'].sum()
-        print ('margin:', margin)
 
 
         # Compute left positions for each stacked segment
