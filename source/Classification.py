@@ -29,6 +29,12 @@ class CategorizationProcessor:
                 publication.category = cat
                 return
 
+    def get_cat_by_code(self, name):
+        for cat in self.categories:
+            if cat.code == name:
+                return cat
+        return None
+
 class LocalCategorizationProcessor(CategorizationProcessor):
     '''
     This class tries to explain the local only publications.
@@ -36,7 +42,7 @@ class LocalCategorizationProcessor(CategorizationProcessor):
     '''
     def __init__(self, *args):
         super().__init__()
-        self.categories = set([L1(*args), L2(*args), L3(*args), LocalDefault(*args)])
+        self.categories = set([Linst(*args), Ltime(*args), LPrefix(*args), Lother(*args)])
 
 class OverlapCategorizationProcessor(CategorizationProcessor):
     '''
@@ -45,7 +51,7 @@ class OverlapCategorizationProcessor(CategorizationProcessor):
     '''
     def __init__(self, *args):
         super().__init__()
-        self.categories = set([Overlap(*args)])
+        self.categories = set([Matched(*args)])
 
 class GlobalCategorizationProcessor(CategorizationProcessor):
     '''
@@ -53,7 +59,7 @@ class GlobalCategorizationProcessor(CategorizationProcessor):
     '''
     def __init__(self, *args):
         super().__init__()
-        self.categories = set([G1(*args), G2(*args), G3(*args), GlobalDefault(*args)])
+        self.categories = set([Gprefix(*args), Gtype(*args), Gauthors(*args), Gother(*args)])
 
 
 class AbstractCategory():
@@ -122,7 +128,7 @@ class AbstractCategory():
 
         df['add_odds_ratio'] = df['observed_odds'].apply(lambda x: safe_odds_ratio(x, expected_odds))
 
-        df = df.sort_values('add_odds_ratio', ascending=False)
+        df = df.sort_values(['add_odds_ratio',False], ascending=False)
         return df
 
 
@@ -133,7 +139,7 @@ LOCAL CATEGORIES
 ################
 '''
 
-class L1(AbstractCategory):
+class Linst(AbstractCategory):
     code = 'L-inst'
     description = 'DOI in global repo not affiliated with the institution'
     color = '#f58c87'
@@ -165,7 +171,7 @@ class L1(AbstractCategory):
 
         return pub_foundable_but_not_affiliated
 
-class L2(AbstractCategory):
+class Ltime(AbstractCategory):
     code = 'L-time'
     description = 'DOI in global repo not within time range'
     color = '#f58c87'
@@ -188,7 +194,7 @@ class L2(AbstractCategory):
 
         return pub_found_outside_time_range
 
-class L3(AbstractCategory):
+class LPrefix(AbstractCategory):
     code = 'L-prefix'
     description = 'DOI not found in global repo, related to DOI\'s prefix'
     color = '#f58c87'
@@ -213,8 +219,10 @@ class L3(AbstractCategory):
 
         prefix_analysis = self.add_odds_ratio(prefix_analysis)
 
+
         prefix_analysis = prefix_analysis[prefix_analysis['total'] >= self.PARAM_MIN_RECORDS]
         prefix_analysis = prefix_analysis[prefix_analysis['add_odds_ratio'] >= self.PARAM_ODDS_RATIO_TRESHOLD]
+        self.prefix_analysis = prefix_analysis.reset_index()
 
         self.problematic_prefixes = prefix_analysis.index.tolist()
 
@@ -235,7 +243,7 @@ class L3(AbstractCategory):
 
 
 
-class LocalDefault(AbstractCategory):
+class Lother(AbstractCategory):
     code = 'L-other'
     description = 'Other DOI only present in local repo'
     color = '#ee4037'
@@ -251,7 +259,7 @@ OVERLAP CATEGORIES
 ################
 '''
 
-class Overlap(AbstractCategory):
+class Matched(AbstractCategory):
     code = 'Matched'
     description = 'At least one DOI found in both repositories'
     color = '#272261'
@@ -266,7 +274,7 @@ GLOBAL CATEGORIES
 ################
 '''
 
-class G1(AbstractCategory):
+class Gprefix(AbstractCategory):
     code = 'G-prefix'
     description = 'DOI not found in local repo, related to DOI\'s prefix'
 
@@ -293,8 +301,13 @@ class G1(AbstractCategory):
         prefix = prefix[prefix['total'] >= self.PARAM_MIN_RECORDS]
         prefix = prefix[prefix['add_odds_ratio'] >= self.PARAM_ODDS_RATIO_TRESHOLD]
 
+        self.prefix_analysis = prefix.reset_index()
+
         # We want to keep records where the success rate is significantly lower than the expected success rate
         self.problematic_prefixes = set(prefix.index.tolist())
+
+
+
 
 
 
@@ -309,7 +322,7 @@ class G1(AbstractCategory):
 
         return False
 
-class G2(AbstractCategory):
+class Gtype(AbstractCategory):
     code = 'G-type'
     description = 'DOI not found in local repo, related to the type of publication'
 
@@ -334,8 +347,12 @@ class G2(AbstractCategory):
 
         type_analysis = self.add_odds_ratio(type_analysis)
 
+        self.type_analysis = type_analysis.reset_index().sort_values('add_odds_ratio', ascending=False)
+
         type_analysis = type_analysis[type_analysis['total'] >= self.PARAM_MIN_RECORDS]
         type_analysis = type_analysis[type_analysis['add_odds_ratio'] >= self.PARAM_ODDS_RATIO_TRESHOLD]
+
+
 
         # We want to keep records where the success rate is significantly lower than the expected success rate
         self.problematic_types = type_analysis.index.tolist()
@@ -349,7 +366,7 @@ class G2(AbstractCategory):
 
         return False
 
-class G3(AbstractCategory):
+class Gauthors(AbstractCategory):
     code = 'G-authors'
     description = 'DOI not found in local repo, written by authors known to the institution'
 
@@ -390,7 +407,7 @@ class G3(AbstractCategory):
 
         return len(authors_known_to_inst) > 0
 
-class GlobalDefault(AbstractCategory):
+class Gother(AbstractCategory):
     code = 'G-other'
     description = 'Other DOI only present in global repo'
     color = '#faaf41'

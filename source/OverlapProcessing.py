@@ -201,11 +201,12 @@ class OverlapProcessing():
         # Add text below each segment
         for bar, val, code, pct in zip(bars, values, codes, pcts):
             bar_center = bar.get_x() + bar.get_width() / 2
-            bar_bottom = bar.get_y() - 0.08  # just below the bar
+            bar_bottom = bar.get_y() - 0.12  # just below the bar
             ax_bar.text(
                 bar_center,
                 bar_bottom,
-                f"{code}\n{val}\n{pct}",
+                #f"{code}\n{val}\n{pct}",
+                f"{code}\n{val}\n",
                 va='top',
                 ha='center',
                 fontsize=8,
@@ -230,11 +231,11 @@ class OverlapProcessing():
 
             ax_bar.text(
                 x=(start_position + end_position) / 2,
-                y=0.4,
+                y=0.3,
                 s=(
                     f"{super_category}\n"
                     f"{block_count}\n"
-                    f"{(block_count / total) * 100:.1f}%"
+                    #   f"{(block_count / total) * 100:.1f}%"
                 ),
                 ha='center',
                 va='bottom',
@@ -257,14 +258,26 @@ class OverlapProcessing():
             ax_legend.axis('off')
 
             # Build lines for the legend
-            legend_lines = ["Legend:"]
+            legend_lines = ["Legend"]
             for _, row in data[['code', 'description']].drop_duplicates().iterrows():
-                legend_lines.append(f"{row['code']} - {row['description']}")
+                legend_lines.append(f"{row['code']}:")
             legend_text = "\n".join(legend_lines)
 
             # Put text in the center of ax_legend
             ax_legend.text(
-                0, 0.9,
+                0.1, 0.9,
+                legend_text,
+                ha='right',
+                va='top',
+                fontsize=8
+            )
+
+            legend_lines = [""]
+            for _, row in data[['code', 'description']].drop_duplicates().iterrows():
+                legend_lines.append(f"{row['description']}")
+            legend_text = "\n".join(legend_lines)
+            ax_legend.text(
+                0.12, 0.9,
                 legend_text,
                 ha='left',
                 va='top',
@@ -274,7 +287,10 @@ class OverlapProcessing():
         # Final layout & save/show
         plt.tight_layout()
         if path:
-            plt.savefig(path, bbox_inches='tight')
+            if path.endswith('.png'):
+                plt.savefig(path, bbox_inches='tight', dpi=600)
+            else:
+                plt.savefig(path, bbox_inches='tight')
         else:
             plt.show()
 
@@ -293,15 +309,31 @@ class OverlapProcessing():
         distribution['fraction'] = distribution['count'] / tot
         report['distribution-category'] = distribution.to_dict(orient='records')
 
-        # report['distribution-super-category'] = data.groupby('super-category').size().to_dict()
-        # report['distribution-super-category-norm'] = (data.groupby('super-category').size() / tot).to_dict()
-        # report['distribution-category'] = data.groupby(['code', 'description']).size().rename('count').reset_index().to_dict(orient='records')
-        # report['distribution-category-norm'] = data.groupby(['code', 'description']).size().div(tot).rename('count').reset_index().to_dict(orient='records')
+        l_prefix = self.local_categorization.get_cat_by_code('L-prefix').prefix_analysis.to_dict(orient='records')
+        report['L-prefix-problematic-prefix'] = l_prefix
 
-        print (data.sample(20).to_string())
+        l_time = data[data['code']=='L-time']['category_details'].apply(lambda x: x['year_issued_global']).value_counts().to_dict()
+        report['L_time-year'] = l_time
 
-        print (json.dumps(report, indent=2))
-        exit()
+        l_inst = data[data['code']=='L-inst']['DOIs'].to_list()
+        # convert to list of list (to make it json serializable)
+        l_inst = [list(x) for x in l_inst]
+        report['L-inst-DOIs'] = l_inst
+
+        g_prefix = self.global_categorization.get_cat_by_code('G-prefix').prefix_analysis
+        report['G-prefix-problematic-prefix'] = g_prefix.to_dict(orient='records')
+
+        g_type = self.global_categorization.get_cat_by_code('G-type').type_analysis
+        report['G-prefix-problematic-type'] = g_type.to_dict(orient='records')
+
+        # show sample of record for G-author
+        l_inst = data[data['code']=='G-authors']['DOIs'].to_list()
+        # convert to list of list (to make it json serializable)
+        l_inst = [list(x) for x in l_inst]
+        report['G-authors-DOIs'] = l_inst
+
+        return report
+
 
 
 

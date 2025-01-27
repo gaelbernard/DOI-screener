@@ -60,9 +60,10 @@ processor = OverlapProcessing()
 processor.prepare_repositories(local_dois, yr_min, yr_max, ror_id, global_repo_name, path_export)
 ```
 
-Once the processor is initialized, you can use the following code to generate the overlap chart and extract insights:
+Once the processor is initialized, you can use the following code to generate the overlap chart and extract a report with detailed statistics:
 ```python
 from source.OverlapProcessing import OverlapProcessing
+import json 
 
 path_export = 'exported_data/'
 
@@ -79,6 +80,9 @@ processor.extract_detailed_stats()
 # Save the bar chart to a file
 show_legend = True
 processor.build_bar_chart('demo.svg', show_legend)
+report = processor.extract_detailed_stats()
+print (json.dumps(report, indent=2))
+
 ```
 
 ## Extensibility
