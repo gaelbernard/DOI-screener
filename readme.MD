@@ -125,8 +125,5 @@ class LocalCategorizationProcessor(CategorizationProcessor):
         self.categories = set([L1(*args), L2(*args), L3(*args), L4(*args), LocalDefault(*args)])
 ```
 
-## License
-This project is licensed under the MIT License
-
 ## Contact
 For any questions, feel free to contact us (contact in the paper)

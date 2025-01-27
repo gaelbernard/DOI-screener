@@ -1,3 +1,6 @@
 .env/
 instanciation
 .idea/
+/static/abstract.png
+/static/epfl-ethz.graffle
+/static/epfl-ethz.png

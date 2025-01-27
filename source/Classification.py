@@ -173,7 +173,7 @@ class Linst(AbstractCategory):
 
 class Ltime(AbstractCategory):
     code = 'L-time'
-    description = 'DOI in global repo not within time range'
+    description = 'DOI in global repo not within year range'
     color = '#f58c87'
     order = 2
 
@@ -245,7 +245,7 @@ class LPrefix(AbstractCategory):
 
 class Lother(AbstractCategory):
     code = 'L-other'
-    description = 'Other DOI only present in local repo'
+    description = 'DOI only present in local repo, but without any identified reason'
     color = '#ee4037'
     order = 10000
 
@@ -261,7 +261,7 @@ OVERLAP CATEGORIES
 
 class Matched(AbstractCategory):
     code = 'Matched'
-    description = 'At least one DOI found in both repositories'
+    description = 'Matched at least one DOI found in both repositories'
     color = '#272261'
     order = 0
 
@@ -409,7 +409,7 @@ class Gauthors(AbstractCategory):
 
 class Gother(AbstractCategory):
     code = 'G-other'
-    description = 'Other DOI only present in global repo'
+    description = 'DOI only present in global repo, but without any identified reason'
     color = '#faaf41'
     order = 10000
 
