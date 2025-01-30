@@ -141,7 +141,7 @@ LOCAL CATEGORIES
 
 class Linst(AbstractCategory):
     code = 'L-inst'
-    description = 'DOI in global repo not affiliated with the institution'
+    description = 'DOI is not affiliated with institution in global repo'
     color = '#f58c87'
     order = 1
 
@@ -173,7 +173,7 @@ class Linst(AbstractCategory):
 
 class Ltime(AbstractCategory):
     code = 'L-time'
-    description = 'DOI in global repo not within year range'
+    description = 'DOI is not within time range in global repo'
     color = '#f58c87'
     order = 2
 
@@ -196,7 +196,7 @@ class Ltime(AbstractCategory):
 
 class LPrefix(AbstractCategory):
     code = 'L-prefix'
-    description = 'DOI not found in global repo, related to DOI\'s prefix'
+    description = 'DOI not found in global repo, and has a DOI-prefix that is rarely in matched DOIs'
     color = '#f58c87'
     order = 3
 
@@ -245,7 +245,7 @@ class LPrefix(AbstractCategory):
 
 class Lother(AbstractCategory):
     code = 'L-other'
-    description = 'DOI only present in local repo, but without any identified reason'
+    description = 'DOI not found in global repo, and does not satisfy any other rule'
     color = '#ee4037'
     order = 10000
 
@@ -261,7 +261,7 @@ OVERLAP CATEGORIES
 
 class Matched(AbstractCategory):
     code = 'Matched'
-    description = 'Matched at least one DOI found in both repositories'
+    description = 'DOI is affiliated with institution and is within time range in global repo'
     color = '#272261'
     order = 0
 
@@ -276,7 +276,7 @@ GLOBAL CATEGORIES
 
 class Gprefix(AbstractCategory):
     code = 'G-prefix'
-    description = 'DOI not found in local repo, related to DOI\'s prefix'
+    description = 'DOI is not in local list, and has a DOI-prefix that is rarely in matched DOIs'
 
     color = '#fccf8d'
     order = 1
@@ -324,7 +324,7 @@ class Gprefix(AbstractCategory):
 
 class Gtype(AbstractCategory):
     code = 'G-type'
-    description = 'DOI not found in local repo, related to the type of publication'
+    description = 'DOI is not in local list, and has a publication type that is rarely in matched DOIs'
 
     color = '#fccf8d'
     order = 2
@@ -368,7 +368,7 @@ class Gtype(AbstractCategory):
 
 class Gauthors(AbstractCategory):
     code = 'G-authors'
-    description = 'DOI not found in local repo, written by authors known to the institution'
+    description = 'DOI is not in local list, and authored by an author affiliated with the institution in the matched DOIs'
 
     color = '#fccf8d'
     order = 3
@@ -409,7 +409,7 @@ class Gauthors(AbstractCategory):
 
 class Gother(AbstractCategory):
     code = 'G-other'
-    description = 'DOI only present in global repo, but without any identified reason'
+    description = 'DOI is not in local list, and does not satisfy any other rule'
     color = '#faaf41'
     order = 10000
 
