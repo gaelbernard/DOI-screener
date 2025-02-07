@@ -162,7 +162,7 @@ class OpenAlexRepository(Repository):
         # Calling OpenAlex API in batches of 100 DOIs
         pbar = tqdm(total=len(dois), desc="Retrieving publications using from DOIs")
         for batch_dois in chunked(dois, 100):
-            url = f"https://api.openalex.org/works?filter=doi:{'|'.join(batch_dois)}&select=doi,publication_year,title,type,locations,authorships"
+            url = f"https://api.openalex.org/works?filter=doi:{'|'.join(batch_dois)}&select=doi,publication_year,title,type,locations,authorships&per_page=100"
 
             for record in requests.get(url).json().get('results',[]):
                 record_dois = set([x['landing_page_url'] for x in record['locations'] if x['landing_page_url'] and x['landing_page_url'].startswith('https://doi.org/')] + [record['doi']])
