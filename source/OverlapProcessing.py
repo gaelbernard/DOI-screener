@@ -126,6 +126,7 @@ class OverlapProcessing():
             print (pub)
             print (rules)
             print ()
+
             exit()
 
         # Extract all the meta rules (description of the rules)
