@@ -1,4 +1,4 @@
-from locale import locale_alias
+from source.RulesProcessor import AbstractRulefrom source.RulesProcessor import RuleProcessorfrom locale import locale_alias
 
 # Local and Global Scientific Repositories Overlap Analysis
 
@@ -13,7 +13,10 @@ The goal of this code is to take the following information as input:
 
 Once this information is provided, the code will:
 - Automatically retrieve publication from a Global repository
-- Measure the overlap
+- Measure the overlap and build three sets:
+  - Local only publications (publication found only in the local repository)
+  - Overlapping publications (publication found in both the local and global repository)
+  - Global only publications (publication found only in the global repository)
 - Produce a visualization of the overlap like the one shown below
 
 ![example_with_legend.png](static/example_with_legend.png)
@@ -27,11 +30,18 @@ More details about this project in the following paper:
 XXX
 
 ## Quick Start
+
+### Installation
+
 Clone the repository and install the required packages by running:
 ```bash
 git clone
 pip install -r requirements.txt
 ```
+
+### Preparing the sets
+
+The first step is to prepare the data. This step is required to retrieve the data from the global repository and compute the 3 sets (local only, overlapping, global only).
 
 Minimal code to prepare the required input data and retrieve the data from the global repository:
 ```python
@@ -60,29 +70,35 @@ processor = OverlapProcessing()
 processor.prepare_repositories(local_dois, yr_min, yr_max, ror_id, global_repo_name, path_export)
 ```
 
-Once the processor is initialized, you can use the following code to generate the overlap chart and extract a report with detailed statistics:
+### Load the sets
+
+If you have already retrieved the data, you can load it from disk using the following code. By doing so, you avoid having to retrieve the data again.
 ```python
 from source.OverlapProcessing import OverlapProcessing
-import json 
-
-path_export = 'exported_data/'
-
-# Load the repos from disk (if the data was already retrieved)
 processor = OverlapProcessing()
-processor.load_repositories(path_export)
+processor.load_repositories('epfl_openalex')
+```
 
-# Run the overlap analysis
-processor.categorize()
+### Build the overlap chart
 
-# Extract insights
-processor.extract_detailed_stats()
+Once the processor is initialized, you can use the following code to generate the overlap chart.
+
+To make the chart more readable, a publication is explained by a single rule in the bar chart. Hence, the order in which the rules are applied is important when building the chart.
+
+```python
+from source.OverlapProcessing import OverlapProcessing
+processor = OverlapProcessing()
+processor.load_repositories('epfl_openalex')
 
 # Save the bar chart to a file
 show_legend = True
-processor.build_bar_chart('demo.svg', show_legend)
-report = processor.extract_detailed_stats()
-print (json.dumps(report, indent=2))
 
+# Define the order in which the rules are applied
+local_order = ['L-inst', 'L-time', 'L-prefix', 'L-other']
+matched_rule_order = ['Matched']
+global_rule_order = ['G-prefix', 'G-type', 'G-authors', 'G-other']
+
+processor.build_bar_chart(local_order, matched_rule_order, global_rule_order, 'example.svg', show_legend)
 ```
 
 ## Extensibility
@@ -92,12 +108,12 @@ The code is designed to be easily extensible. For instance, you can easily add a
 All you need is to implement the methods: load_from_ror(), load_from_dois
 
 ### Adding a categorization rule
-A category allows providing a more detailed analysis of the overlap. Instead of just having a single value for the overlap, we categorized the overlap based on specific rules.
+A rule allows providing a more detailed analysis of the overlap. Instead of just having a single value for the overlap, we categorized the overlap based on specific rules.
 You can easily extend the categories by creating a new class that inherits from AbstractCategory in the [Categories.py](source/Categories.py).
 For instance, the following code creates a new category that checks if one of the DOIs contains the letter "a" (silly example to get the idea):
 
 ```python
-class L4(AbstractCategory):
+class L4(AbstractRule):
     code = 'L4'
     description = 'One of the DOI contains the letter "a"'
     color = '#f58c87'
@@ -115,7 +131,7 @@ class L4(AbstractCategory):
 
 Then, you need to register the new category in the CategorizationProcessor [Classification.py](source/Classification.py)[Categories.py](source/Categories.py) file:
 ```python
-class LocalCategorizationProcessor(CategorizationProcessor):
+class LocalCategorizationProcessor(RuleProcessor):
     '''
     This class tries to explain the local only publications.
     The last category is the default category.

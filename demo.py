@@ -21,6 +21,6 @@ path_export = 'exported_data/'
 # It might take several minutes for a large institution
 processor = OverlapProcessing()
 processor.prepare_repositories(local_dois, yr_min, yr_max, ror_id, global_repo_name, path_export)
-processor.categorize()
+processor.apply_rules()
 processor.extract_detailed_stats()
 processor.build_bar_chart('epfl_openalex_bar_chart.svg', True)

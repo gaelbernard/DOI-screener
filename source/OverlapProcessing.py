@@ -1,5 +1,5 @@
 import pandas as pd
-from source.Classification import LocalCategorizationProcessor, OverlapCategorizationProcessor, GlobalCategorizationProcessor
+from source.Rules import LocalRuleProcessor, OverlapRuleProcessor, GlobalRuleProcessor
 from source.BaseObjects import Repository, LocalRepository, OpenAlexRepository
 import matplotlib.pyplot as plt
 import os
@@ -26,11 +26,10 @@ class OverlapProcessing():
         self.global_only = None                     # Publications that we find in the global repository but not in the local repository
         self.global_repo_from_missing_doi = None    # Publications that we don't find in the global repository by requesting the ror_id for the time range but we can find them using the DOI (only used during the categorization)
 
-        # Variable to store the categorization
-        self.local_categorization = None            # Categorization of the local only publications
-        self.overlap_categorization = None          # Categorization of the overlap publications
-        self.global_categorization = None           # Categorization of the global only publications
-        self.individual_categorization = None       # Categorization of the individual publications (used to generate the bar chart)
+        # Variable to store the rules
+        self.local_rules = None            # Categorization of the local only publications
+        self.overlap_rules = None          # Categorization of the overlap publications
+        self.global_rules = None           # Categorization of the global only publications
 
     def prepare_repositories(self, internal_dois, yr_min, yr_max, ror_id, repo_name, path_to_save):
         '''
@@ -108,80 +107,101 @@ class OverlapProcessing():
         self.global_only = Repository.load_from_disk(os.path.join(path, self.filename_global_only))
         self.global_repo_from_missing_doi = Repository.load_from_disk(os.path.join(path, self.filename_global_repo_from_missing_doi))
 
-    def categorize(self):
+    def apply_rules(self):
         '''
-        Categorize the publications in the three repositories so we can have a better understanding of the distribution.
+        Apply the rules to all publications from the three repositories
         :return:
         '''
         assert self.local_only and self.overlap and self.global_only and self.global_repo_from_missing_doi, 'The repositories must be prepared or loaded first (i.e., prepare_repositories, load_repositories)'
 
-        rules_results = []  # Store the results of the rules
-        rules_meta = []     # Store the meta information of the rules
+        self.local_rules = LocalRuleProcessor(self.local_only, self.overlap, self.global_only, self.global_repo_from_missing_doi)
+        self.local_rules.process(self.local_only.publications)
 
-        self.local_categorization = LocalCategorizationProcessor(self.local_only, self.overlap, self.global_only, self.global_repo_from_missing_doi)
-        for publication in self.local_only.publications:
-            pub = publication.to_dict()
-            # Should assignation be made here? Does not seem to make sense
-            rules = self.local_categorization.process(publication)
-            print (pub)
-            print (rules)
-            print ()
+        self.overlap_rules = OverlapRuleProcessor(self.local_only, self.overlap, self.global_only, self.global_repo_from_missing_doi)
+        self.overlap_rules.process(self.overlap.publications)
 
-            exit()
+        self.global_rules = GlobalRuleProcessor(self.local_only, self.overlap, self.global_only, self.global_repo_from_missing_doi)
+        self.global_rules.process(self.global_only.publications)
 
-        # Extract all the meta rules (description of the rules)
-        meta_rules = []
-        meta_rules.extend(self.local_categorization.to_dict())
+    def build_bar_chart(self, local_order, matched_rule_order, global_rule_order, path=None, legend=True, color_mapping=None):
+        '''
+        Build a bar chart to visualize the results of the rules
+        :param local_order: To keep the chart simple, we will only show the first rule that is True for each publication. Hence, you need to provide a list that indicates in which order the rules should be applied.
+        :param matched_rule_order: Same as above but for the overlap publications
+        :param global_rule_order: Same as above but for the global only publications
+        :param path: path to save the chart
+        :param legend: whether to show the legend or not
+        :param color_mapping: dictionary to map the color of each rule (if not provided, we will use the default colors)
+        :return:
+        '''
 
+        assert self.local_rules is not None, 'You must apply_rules first (i.e., apply_rules)'
 
-        print (rules)
-        exit()
+        df = []
+        default_color_mapping = {
+            'L-inst': '#f58c87',
+            'L-time': '#f58c87',
+            'L-prefix': '#f58c87',
+            'L-other': '#ee4037',
+            'Matched': '#272261',
+            'G-prefix': '#fccf8d',
+            'G-type': '#fccf8d',
+            'G-authors': '#fccf8d',
+            'G-other': '#faaf41',
+        }
 
+        if not color_mapping:
+            color_mapping = default_color_mapping
+        else:
+            # prioritize the provided color mapping but fill the missing ones with the default color
+            for k in default_color_mapping:
+                if k not in color_mapping:
+                    color_mapping[k] = default_color_mapping[k]
 
-        self.overlap_categorization = OverlapCategorizationProcessor(self.local_only, self.overlap, self.global_only, self.global_repo_from_missing_doi)
-        for publication in self.overlap.publications:
-            print (publication.to_dict())
-            exit()
+        default_color = '#cccccc'
 
-            self.overlap_categorization.process(publication)
+        # retrieve a single rule result for each sets and add it to the dataframe
+        single_rule_result = self.local_rules.get_single_rule_result(local_order)
+        for r in single_rule_result:
+            df.append({
+                'set': self.local_rules.name,
+                'set-order': 1,
+                'code': r.rule.code,
+                'description': r.rule.description,
+                'order': local_order.index(r.rule.code),
+            })
 
-        self.global_categorization = GlobalCategorizationProcessor(self.local_only, self.overlap, self.global_only, self.global_repo_from_missing_doi)
-        for publication in self.global_only.publications:
-            self.global_categorization.process(publication)
+        single_rule_result = self.overlap_rules.get_single_rule_result(matched_rule_order)
+        for r in single_rule_result:
+            df.append({
+                'set': self.overlap_rules.name,
+                'set-order': 2,
+                'code': r.rule.code,
+                'description': r.rule.description,
+                'order': matched_rule_order.index(r.rule.code),
+            })
 
-        self.individual_categorization = []
+        single_rule_result = self.global_rules.get_single_rule_result(global_rule_order)
+        for r in single_rule_result:
+            df.append({
+                'set': self.global_rules.name,
+                'set-order': 3,
+                'code': r.rule.code,
+                'description': r.rule.description,
+                'order': global_rule_order.index(r.rule.code),
+            })
 
-        for publication in self.local_only.publications:
-            pub_dict = publication.to_dict()
-            pub_dict['super-category'] = 'Local-only'
-            pub_dict['super-order'] = 1
-            self.individual_categorization.append(pub_dict)
-        for publication in self.overlap.publications:
-            pub_dict = publication.to_dict()
-            pub_dict['super-category'] = 'Overlap'
-            pub_dict['super-order'] = 2
-            self.individual_categorization.append(pub_dict)
-        for publication in self.global_only.publications:
-            pub_dict = publication.to_dict()
-            pub_dict['super-category'] = 'Global-only'
-            pub_dict['super-order'] = 3
-            self.individual_categorization.append(pub_dict)
+        # Build dataframe and count
+        df = pd.DataFrame(df)
+        df['color'] = df['code'].map(color_mapping).fillna(default_color)
+        df = df.groupby(['set', 'code', 'description','order','color','set-order']).size().reset_index().rename(columns={0: 'count'})
+        data = df
 
+        # We want to have a mirror effect, so reverse the order when the set-order is 1
+        data.loc[data['set-order'] == 1, 'order'] = data.loc[data['set-order'] == 1, 'order'] * -1
 
-    def build_bar_chart(self, path=None, legend=True):
-        assert self.individual_categorization is not None, 'You must categorize the publications first (i.e., categorize)'
+        data = data.sort_values(by=['set-order', 'order'])
 
-        # Use dataframe to pivot the data
-        data = pd.DataFrame(self.individual_categorization)
-        print (data.head().to_string())
-        exit()
-        data = data.groupby(['super-category', 'code', 'description','order','color','super-order']).size().reset_index().rename(columns={0: 'count'})
-        data = data.sort_values(by=['super-order', 'order'])
-
-        # We want to have a mirror effect, so reverse the order when the super-order is 1
-        data['order'] = data.loc[data['super-order'] == 1, 'order'] * -1
-
-        data = data.sort_values(by=['super-order', 'order'])
         data['pct'] = data['count'] / data['count'].sum() * 100
         data['pct'] = data['pct'].round(1)
         data['pct'] = data['pct'].astype(str) + '%'
@@ -189,11 +209,9 @@ class OverlapProcessing():
         # Horizontal Stacked Bar Chart with Horizontal Text and Fixed Margins
         values = data['count'].astype(int)  # bar segment sizes
         pcts = data['pct']  # percent labels
-        codes = data['code']  # category codes
+        codes = data['code']  # rule codes
         colors = data['color']  # colors
-
         margin = .03 * data['count'].sum()
-
 
         # Compute left positions for each stacked segment
         left_positions = [0]
@@ -237,11 +255,11 @@ class OverlapProcessing():
                 color='black',
             )
 
-        # Add super-category lines/labels above the bar
+        # Add set lines/labels above the bar
         start_position = 0
         total = values.sum()
-        for super_category in data['super-category'].unique():
-            ldf = data[data['super-category'] == super_category]
+        for unique_set in data['set'].unique():
+            ldf = data[data['set'] == unique_set]
             block_count = ldf['count'].sum()
             end_position = start_position + block_count + (margin * (len(ldf) - 1))
 
@@ -257,7 +275,7 @@ class OverlapProcessing():
                 x=(start_position + end_position) / 2,
                 y=0.3,
                 s=(
-                    f"{super_category}\n"
+                    f"{unique_set}\n"
                     f"{block_count}\n"
                     #   f"{(block_count / total) * 100:.1f}%"
                 ),
@@ -318,22 +336,31 @@ class OverlapProcessing():
         else:
             plt.show()
 
-    def extract_detailed_stats(self):
-        assert self.individual_categorization is not None, 'You must categorize the publications first (i.e., categorize)'
-        data = pd.DataFrame(self.individual_categorization)
+    def extract_detailed_stats(self, rule):
+        assert self.local_rules is not None, 'You must apply_rules first (i.e., apply_rules)'
 
+        orcids = []
+        for result in self.local_rules.results+self.overlap_rules.results+self.global_rules.results:
+            if result.rule.code != rule:
+                continue
+            print (result.is_rule, result.rule.code, result.rule.description, result.details)
+            orcids.extend(result.details.get('authors_found_global', []))
+
+        print (pd.Series(orcids).value_counts())
+
+        exit()
         tot = data.shape[0]
 
         report = {}
-        distribution_super = data.groupby('super-category').size().rename('count').reset_index()
+        distribution_super = data.groupby('set').size().rename('count').reset_index()
         distribution_super['fraction'] = distribution_super['count'] / tot
-        report['distribution-super-category'] = distribution_super.to_dict(orient='records')
+        report['distribution-set'] = distribution_super.to_dict(orient='records')
 
-        distribution = data.groupby(['super-category', 'code', 'description']).size().rename('count').reset_index()
+        distribution = data.groupby(['set', 'code', 'description']).size().rename('count').reset_index()
         distribution['fraction'] = distribution['count'] / tot
         report['distribution-category'] = distribution.to_dict(orient='records')
 
-        l_prefix = self.local_categorization.get_cat_by_code('L-prefix').prefix_analysis.to_dict(orient='records')
+        l_prefix = self.local_rules.get_rule_by_code('L-prefix').prefix_analysis.to_dict(orient='records')
         report['L-prefix-problematic-prefix'] = l_prefix
 
         l_time = data[data['code']=='L-time']['category_details'].apply(lambda x: x['year_issued_global']).value_counts().to_dict()
@@ -344,10 +371,10 @@ class OverlapProcessing():
         l_inst = [list(x) for x in l_inst]
         report['L-inst-DOIs'] = l_inst
 
-        g_prefix = self.global_categorization.get_cat_by_code('G-prefix').prefix_analysis
+        g_prefix = self.global_rules.get_rule_by_code('G-prefix').prefix_analysis
         report['G-prefix-problematic-prefix'] = g_prefix.to_dict(orient='records')
 
-        g_type = self.global_categorization.get_cat_by_code('G-type').type_analysis
+        g_type = self.global_rules.get_rule_by_code('G-type').type_analysis
         report['G-prefix-problematic-type'] = g_type.to_dict(orient='records')
 
         # show sample of record for G-author

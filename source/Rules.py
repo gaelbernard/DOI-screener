@@ -1,214 +1,103 @@
 import pandas as pd
 import numpy as np
+from source.RulesProcessor import RuleProcessor, AbstractRule
 
-class CategorizationProcessor:
+'''
+################
+PROCESSOR
+################
+We define here the rules that will be applied in each sets (local-only, overlap, global-only)
+'''
+
+class LocalRuleProcessor(RuleProcessor):
     '''
-    This class is responsible for processing the categorization of the publications.
-    We used the chain of responsibility pattern to process the categorization.
-    It makes it easy to add new categories and to change the order of the categories.
-    (instead of having a big if-else block)
-
-    The order in which the categories are tested depends on the 'order' attribute of the category.
-    '''
-    def __init__(self):
-        '''
-        The 'categories' are the all the categories that will be used to process the categorization.
-        '''
-        self.categories = []
-
-    def process(self, publication):
-        '''
-        This method will apply all the rules to the publication
-        :param publication:
-        :return:
-        '''
-        output = {}
-        for cat in self.categories:
-            output[cat.code] = cat.apply(publication)
-
-        return output
-
-    def get_cat_by_code(self, name):
-        for cat in self.categories:
-            if cat.code == name:
-                return cat
-        return None
-
-    def to_dict(self):
-        '''
-        Return a list of all the rules
-        :return:
-        '''
-        name = self.name
-        output = []
-        for rule in self.categories:
-            rule = rule.to_dict()
-            rule['super-category'] = name
-            output.append(rule)
-        return output
-
-class LocalCategorizationProcessor(CategorizationProcessor):
-    '''
-    This class tries to explain the local only publications.
-    The last category is the default category.
+    Rules applied to the local-only publications (publications that are not found in the global repository)
     '''
     def __init__(self, *args):
         super().__init__()
         self.name = 'Local-only'
-        self.categories = {Linst(*args), Ltime(*args), LPrefix(*args), Lother(*args)}
+        self.rules = {Linst(*args), Ltime(*args), LPrefix(*args), Lother(*args)} # The later is the default rule (default rule)
 
-class OverlapCategorizationProcessor(CategorizationProcessor):
+class OverlapRuleProcessor(RuleProcessor):
     '''
-    This class tries to explain the publications that are found in both repositories.
-    For now, we don't have any categories for this case.
+    Rules applied to the overlap publications (publications that are found in both the local and global repositories
     '''
     def __init__(self, *args):
         super().__init__()
         self.name = 'Matched'
-        self.categories = {Matched(*args)}
+        self.rules = {Matched(*args)}
 
-class GlobalCategorizationProcessor(CategorizationProcessor):
+class GlobalRuleProcessor(RuleProcessor):
     '''
-    This class tries to explain the global only publications.
+    Rules applied to the global-only publications (publications that are found in the global repository but not in the local repository
     '''
     def __init__(self, *args):
         super().__init__()
         self.name = 'Global-only'
-        self.categories = {Gprefix(*args), Gtype(*args), Gauthors(*args), Gother(*args)}
-
-
-class AbstractCategory():
-    '''
-    This is the abstract class for the categories.
-    We already know the super-categories (local only, overlap, global only).
-    A category is trying to divide the super-categories into sub-categories to provide more insights.
-    If process() returns True, it means that the publication belongs to this category.
-    '''
-    code = ''
-    description = ''
-    color = ''
-
-    def __init__(self, local_only, overlap, global_only, global_repo_from_missing_doi):
-        self.local_only = local_only
-        self.overlap = overlap
-        self.global_only = global_only
-        self.global_repo_from_missing_doi = global_repo_from_missing_doi
-        self.precompute()
-
-    def precompute(self):
-        '''
-        This method is used to precompute some data that will be used to process the categorization.
-        It is called once before the categorization starts.
-        :return:
-        '''
-        pass
-
-    def apply(self, publication):
-        '''
-        This method is used to process the categorization of the publication.
-        :param publication:
-        :return:
-        '''
-        pass
-
-    def to_dict(self):
-        return {
-            'code': self.code,
-            'description': self.description,
-            'color': self.color,
-        }
-
-    def add_odds_ratio(self, df):
-        assert set(df.columns.tolist()) == set([False, True])
-
-        df['total'] = df.sum(axis=1)
-
-        # Calculate expected fail rate
-        expected_fail_rate = df[False].sum() / df.sum().sum()
-
-        # Actual fail rate for each prefix
-        df['actual_fail_rate'] = df[False] / df['total']
-
-        # Convert rates to odds
-        df['observed_odds'] = df['actual_fail_rate'] / (1 - df['actual_fail_rate'])
-        expected_odds = expected_fail_rate / (1 - expected_fail_rate)
-
-        # Compute actual odds ratio
-        def safe_odds_ratio(obs_odds, exp_odds):
-            if np.isinf(obs_odds):
-                return np.inf
-            return obs_odds / exp_odds
-
-        df['add_odds_ratio'] = df['observed_odds'].apply(lambda x: safe_odds_ratio(x, expected_odds))
-
-        df = df.sort_values(['add_odds_ratio',False], ascending=False)
-        return df
+        self.rules = {Gprefix(*args), Gtype(*args), Gauthors(*args), Gother(*args)} # The later is the default rule (default rule)
 
 
 
 '''
 ################
-LOCAL CATEGORIES
+LOCAL RULES
 ################
+Here we define the rules that will be applied to the local-only publications
 '''
 
-class Linst(AbstractCategory):
+class Linst(AbstractRule):
     code = 'L-inst'
     description = 'DOI is not affiliated with institution in global repo'
-    color = '#f58c87'
-
 
     def __init__(self, local_only, overlap, global_only, global_repo_from_missing_doi):
         super().__init__(local_only, overlap, global_only, global_repo_from_missing_doi)
 
     def apply(self, publication):
+        details = {}
         '''
         Check if the publication is found in the global repository but not affiliated with the institution
         '''
         found_by_doi = self.global_repo_from_missing_doi.search_by_doi(publication.DOIs)
         if not found_by_doi:
-            return False
+            return False, details
 
         # if we are here, it means that the publication was found in the global repository
         # Now we need to check if the authors are affiliated with the institution
         # Returns true
         ror_ids = {ror_id for x in found_by_doi.authors if x.ror_ids for ror_id in x.ror_ids}
-
         pub_foundable_but_not_affiliated = self.local_only.ror_id not in ror_ids
 
         # Record details
         if pub_foundable_but_not_affiliated:
-            publication.category_details['doi_found_global'] = publication.DOIs.intersection(found_by_doi.DOIs)
-            publication.category_details['authors_found_global'] = {x.orcid for x in publication.authors}
+            details['doi_found_global'] = publication.DOIs.intersection(found_by_doi.DOIs)
 
-        return pub_foundable_but_not_affiliated
+        return pub_foundable_but_not_affiliated, details
 
-class Ltime(AbstractCategory):
+class Ltime(AbstractRule):
     code = 'L-time'
     description = 'DOI is not within time range in global repo'
-    color = '#f58c87'
 
     def __init__(self, local_only, overlap, global_only, global_repo_from_missing_doi):
         super().__init__(local_only, overlap, global_only, global_repo_from_missing_doi)
 
     def apply(self, publication):
+        details = {}
         found_by_doi = self.global_repo_from_missing_doi.search_by_doi(publication.DOIs)
         if not found_by_doi:
-            return False
+            return False, details
 
         pub_found_outside_time_range = found_by_doi.year_issued < self.local_only.yr_min or found_by_doi.year_issued > self.local_only.yr_max
 
         # Record details
         if pub_found_outside_time_range:
-            publication.category_details['doi_found_global'] = publication.DOIs.intersection(found_by_doi.DOIs)
-            publication.category_details['year_issued_global'] = found_by_doi.year_issued
+            details['doi_found_global'] = publication.DOIs.intersection(found_by_doi.DOIs)
+            details['year_issued_global'] = found_by_doi.year_issued
 
-        return pub_found_outside_time_range
+        return pub_found_outside_time_range, details
 
-class LPrefix(AbstractCategory):
+class LPrefix(AbstractRule):
     code = 'L-prefix'
     description = 'DOI not found in global repo, and has a DOI-prefix that is rarely in matched DOIs'
-    color = '#f58c87'
 
     PARAM_MIN_RECORDS = 100
     PARAM_ODDS_RATIO_TRESHOLD = 10
@@ -238,6 +127,7 @@ class LPrefix(AbstractCategory):
 
 
     def apply(self, publication):
+        details = {}
         #print ('expected success rate', self.expected_success_rate)
         for doi in publication.DOIs:
             prefix = doi.split('/')[0]
@@ -246,47 +136,43 @@ class LPrefix(AbstractCategory):
 
             # Record details
             if one_prefix_is_problematic:
-                publication.category_details['problematic_prefix'] = prefix
-                return True
+                details['problematic_prefix'] = prefix
+                return True, details
 
-        return False
+        return False, details
 
 
 
-class Lother(AbstractCategory):
+class Lother(AbstractRule):
     code = 'L-other'
     description = 'DOI not found in global repo, and does not satisfy any other rule'
-    color = '#ee4037'
 
     def apply(self, publication):
-        return True
+        return True, {}
 
 
 '''
 ################
-OVERLAP CATEGORIES
+OVERLAP RULES
 ################
 '''
 
-class Matched(AbstractCategory):
+class Matched(AbstractRule):
     code = 'Matched'
     description = 'DOI is affiliated with institution and is within time range in global repo'
-    color = '#272261'
 
     def apply(self, publication):
-        return True
+        return True, {}
 
 '''
 ################
-GLOBAL CATEGORIES
+GLOBAL RULES
 ################
 '''
 
-class Gprefix(AbstractCategory):
+class Gprefix(AbstractRule):
     code = 'G-prefix'
     description = 'DOI is not in local list, and has a DOI-prefix that is rarely in matched DOIs'
-
-    color = '#fccf8d'
 
     PARAM_MIN_RECORDS = 100
     PARAM_ODDS_RATIO_TRESHOLD = 10
@@ -314,26 +200,21 @@ class Gprefix(AbstractCategory):
         self.problematic_prefixes = set(prefix.index.tolist())
 
 
-
-
-
-
     def apply(self, publication):
+        details = {}
 
         prefix_in_publication = set(doi.split('/')[0] for doi in publication.DOIs)
         are_all_prefixes_problematic = prefix_in_publication.issubset(self.problematic_prefixes)
 
         if are_all_prefixes_problematic:
-            publication.category_details['problematic_prefix'] = prefix_in_publication
-            return True
+            details['problematic_prefix'] = prefix_in_publication
+            return True, details
 
-        return False
+        return False, details
 
-class Gtype(AbstractCategory):
+class Gtype(AbstractRule):
     code = 'G-type'
     description = 'DOI is not in local list, and has a publication type that is rarely in matched DOIs'
-
-    color = '#fccf8d'
 
     PARAM_MIN_RECORDS = 100
     PARAM_ODDS_RATIO_TRESHOLD = 10
@@ -364,19 +245,18 @@ class Gtype(AbstractCategory):
         self.problematic_types = type_analysis.index.tolist()
 
     def apply(self, publication):
+        details = {}
         if publication.type in self.problematic_types:
 
             # Record details
-            publication.category_details['problematic_type'] = publication.type
-            return True
+            details['problematic_type'] = publication.type
+            return True, details
 
-        return False
+        return False, details
 
-class Gauthors(AbstractCategory):
+class Gauthors(AbstractRule):
     code = 'G-authors'
     description = 'DOI is not in local list, and authored by an author affiliated with the institution in the matched DOIs'
-
-    color = '#fccf8d'
 
     def __init__(self, local_only, overlap, global_only, global_repo_from_missing_doi):
         super().__init__(local_only, overlap, global_only, global_repo_from_missing_doi)
@@ -399,6 +279,7 @@ class Gauthors(AbstractCategory):
         self.known_authors = known_authors
 
     def apply(self, publication):
+        details = {}
         authors_known_to_inst = set()
         year = publication.year_issued
         if year in self.known_authors:
@@ -408,14 +289,16 @@ class Gauthors(AbstractCategory):
                     authors_known_to_inst.add(author.orcid)
 
         if len(authors_known_to_inst) > 0:
-            publication.category_details['authors_known_to_inst'] = authors_known_to_inst
+            details['authors_known_to_inst'] = authors_known_to_inst
 
-        return len(authors_known_to_inst) > 0
+        is_authored_by_known_author = len(authors_known_to_inst) > 0
 
-class Gother(AbstractCategory):
+        return is_authored_by_known_author, details
+
+class Gother(AbstractRule):
     code = 'G-other'
     description = 'DOI is not in local list, and does not satisfy any other rule'
-    color = '#faaf41'
 
     def apply(self, publication):
-        return True
+        return True, {}
+

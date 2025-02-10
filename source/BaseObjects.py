@@ -1,10 +1,7 @@
 import pickle
-import pandas as pd
 from tqdm import tqdm
 import requests
 from more_itertools import chunked
-from source.Classification import LocalCategorizationProcessor, OverlapCategorizationProcessor, GlobalCategorizationProcessor
-import matplotlib.pyplot as plt
 
 class Repository:
     '''
@@ -35,6 +32,7 @@ class Repository:
             return None
         ror_id = ror_id.lower()
         ror_id = ror_id.replace('https://ror.org/', '')
+
         return ror_id
 
     def load_from_dois(self, dois, year_range):
@@ -197,7 +195,7 @@ class Publication():
         self.year_issued = year_issued
         self.type = type
         self.category = None        # This will be set by the CategorizationProcessor
-        self.category_details = {}  # Holder for detailed category information (like which prefix was used to categorize)
+        self.category_details = {}  # Holder for detailed category information (like which prefix was used to apply_rules)
 
         if authors is None:
             authors = []
@@ -226,17 +224,6 @@ class Publication():
 
     def __str__(self):
         return f'Publication with {len(self.DOIs)} DOI and {len(self.authors)} authors'
-
-    def to_dict(self):
-        obj = {
-            'DOIs': self.DOIs,
-            'year_issued': self.year_issued,
-            'type': self.type,
-            #'authors': [author.to_dict() for author in self.authors], # Not sure if we need this, can be potentially large
-            'category_details': self.category_details
-        }
-        if self.category:
-            obj.update(self.category.to_dict())
 
         return obj
 
@@ -270,15 +257,6 @@ class Author():
 
     def __str__(self):
         return f'Author: {self.orcid}, {self.ror_ids}'
-
-    def to_dict(self):
-        return {
-            'orcid': self.orcid,
-            'ror_ids': self.ror_ids
-        }
-
-
-
 
 
 
