@@ -115,12 +115,33 @@ class OverlapProcessing():
         '''
         assert self.local_only and self.overlap and self.global_only and self.global_repo_from_missing_doi, 'The repositories must be prepared or loaded first (i.e., prepare_repositories, load_repositories)'
 
+        rules_results = []  # Store the results of the rules
+        rules_meta = []     # Store the meta information of the rules
+
         self.local_categorization = LocalCategorizationProcessor(self.local_only, self.overlap, self.global_only, self.global_repo_from_missing_doi)
         for publication in self.local_only.publications:
-            self.local_categorization.process(publication)
+            pub = publication.to_dict()
+            # Should assignation be made here? Does not seem to make sense
+            rules = self.local_categorization.process(publication)
+            print (pub)
+            print (rules)
+            print ()
+            exit()
+
+        # Extract all the meta rules (description of the rules)
+        meta_rules = []
+        meta_rules.extend(self.local_categorization.to_dict())
+
+
+        print (rules)
+        exit()
+
 
         self.overlap_categorization = OverlapCategorizationProcessor(self.local_only, self.overlap, self.global_only, self.global_repo_from_missing_doi)
         for publication in self.overlap.publications:
+            print (publication.to_dict())
+            exit()
+
             self.overlap_categorization.process(publication)
 
         self.global_categorization = GlobalCategorizationProcessor(self.local_only, self.overlap, self.global_only, self.global_repo_from_missing_doi)
@@ -151,6 +172,8 @@ class OverlapProcessing():
 
         # Use dataframe to pivot the data
         data = pd.DataFrame(self.individual_categorization)
+        print (data.head().to_string())
+        exit()
         data = data.groupby(['super-category', 'code', 'description','order','color','super-order']).size().reset_index().rename(columns={0: 'count'})
         data = data.sort_values(by=['super-order', 'order'])
 

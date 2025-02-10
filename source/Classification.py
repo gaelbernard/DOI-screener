@@ -18,22 +18,34 @@ class CategorizationProcessor:
 
     def process(self, publication):
         '''
-        This method will process the categorization of the publication
-        (i.e., test and assign a category to the publication)
-        It is sorted by the 'order' attribute of the category.
+        This method will apply all the rules to the publication
         :param publication:
         :return:
         '''
-        for cat in sorted(self.categories, key=lambda x: x.order):
-            if cat.apply(publication):
-                publication.category = cat
-                return
+        output = {}
+        for cat in self.categories:
+            output[cat.code] = cat.apply(publication)
+
+        return output
 
     def get_cat_by_code(self, name):
         for cat in self.categories:
             if cat.code == name:
                 return cat
         return None
+
+    def to_dict(self):
+        '''
+        Return a list of all the rules
+        :return:
+        '''
+        name = self.name
+        output = []
+        for rule in self.categories:
+            rule = rule.to_dict()
+            rule['super-category'] = name
+            output.append(rule)
+        return output
 
 class LocalCategorizationProcessor(CategorizationProcessor):
     '''
@@ -42,7 +54,8 @@ class LocalCategorizationProcessor(CategorizationProcessor):
     '''
     def __init__(self, *args):
         super().__init__()
-        self.categories = set([Linst(*args), Ltime(*args), LPrefix(*args), Lother(*args)])
+        self.name = 'Local-only'
+        self.categories = {Linst(*args), Ltime(*args), LPrefix(*args), Lother(*args)}
 
 class OverlapCategorizationProcessor(CategorizationProcessor):
     '''
@@ -51,7 +64,8 @@ class OverlapCategorizationProcessor(CategorizationProcessor):
     '''
     def __init__(self, *args):
         super().__init__()
-        self.categories = set([Matched(*args)])
+        self.name = 'Matched'
+        self.categories = {Matched(*args)}
 
 class GlobalCategorizationProcessor(CategorizationProcessor):
     '''
@@ -59,7 +73,8 @@ class GlobalCategorizationProcessor(CategorizationProcessor):
     '''
     def __init__(self, *args):
         super().__init__()
-        self.categories = set([Gprefix(*args), Gtype(*args), Gauthors(*args), Gother(*args)])
+        self.name = 'Global-only'
+        self.categories = {Gprefix(*args), Gtype(*args), Gauthors(*args), Gother(*args)}
 
 
 class AbstractCategory():
@@ -72,7 +87,6 @@ class AbstractCategory():
     code = ''
     description = ''
     color = ''
-    order = 0
 
     def __init__(self, local_only, overlap, global_only, global_repo_from_missing_doi):
         self.local_only = local_only
@@ -102,7 +116,6 @@ class AbstractCategory():
             'code': self.code,
             'description': self.description,
             'color': self.color,
-            'order': self.order
         }
 
     def add_odds_ratio(self, df):
@@ -143,7 +156,6 @@ class Linst(AbstractCategory):
     code = 'L-inst'
     description = 'DOI is not affiliated with institution in global repo'
     color = '#f58c87'
-    order = 1
 
 
     def __init__(self, local_only, overlap, global_only, global_repo_from_missing_doi):
@@ -175,7 +187,6 @@ class Ltime(AbstractCategory):
     code = 'L-time'
     description = 'DOI is not within time range in global repo'
     color = '#f58c87'
-    order = 2
 
     def __init__(self, local_only, overlap, global_only, global_repo_from_missing_doi):
         super().__init__(local_only, overlap, global_only, global_repo_from_missing_doi)
@@ -198,7 +209,6 @@ class LPrefix(AbstractCategory):
     code = 'L-prefix'
     description = 'DOI not found in global repo, and has a DOI-prefix that is rarely in matched DOIs'
     color = '#f58c87'
-    order = 3
 
     PARAM_MIN_RECORDS = 100
     PARAM_ODDS_RATIO_TRESHOLD = 10
@@ -247,7 +257,6 @@ class Lother(AbstractCategory):
     code = 'L-other'
     description = 'DOI not found in global repo, and does not satisfy any other rule'
     color = '#ee4037'
-    order = 10000
 
     def apply(self, publication):
         return True
@@ -263,7 +272,6 @@ class Matched(AbstractCategory):
     code = 'Matched'
     description = 'DOI is affiliated with institution and is within time range in global repo'
     color = '#272261'
-    order = 0
 
     def apply(self, publication):
         return True
@@ -279,7 +287,6 @@ class Gprefix(AbstractCategory):
     description = 'DOI is not in local list, and has a DOI-prefix that is rarely in matched DOIs'
 
     color = '#fccf8d'
-    order = 1
 
     PARAM_MIN_RECORDS = 100
     PARAM_ODDS_RATIO_TRESHOLD = 10
@@ -327,7 +334,6 @@ class Gtype(AbstractCategory):
     description = 'DOI is not in local list, and has a publication type that is rarely in matched DOIs'
 
     color = '#fccf8d'
-    order = 2
 
     PARAM_MIN_RECORDS = 100
     PARAM_ODDS_RATIO_TRESHOLD = 10
@@ -371,7 +377,6 @@ class Gauthors(AbstractCategory):
     description = 'DOI is not in local list, and authored by an author affiliated with the institution in the matched DOIs'
 
     color = '#fccf8d'
-    order = 3
 
     def __init__(self, local_only, overlap, global_only, global_repo_from_missing_doi):
         super().__init__(local_only, overlap, global_only, global_repo_from_missing_doi)
@@ -411,7 +416,6 @@ class Gother(AbstractCategory):
     code = 'G-other'
     description = 'DOI is not in local list, and does not satisfy any other rule'
     color = '#faaf41'
-    order = 10000
 
     def apply(self, publication):
         return True
