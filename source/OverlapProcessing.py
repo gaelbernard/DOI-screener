@@ -340,6 +340,7 @@ class OverlapProcessing():
         assert self.local_rules is not None, 'You must apply_rules first (i.e., apply_rules)'
 
         orcids = []
+
         for result in self.local_rules.results+self.overlap_rules.results+self.global_rules.results:
             if result.rule.code != rule:
                 continue
